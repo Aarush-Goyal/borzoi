@@ -2,12 +2,15 @@ package lib
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/automation-co/borzoi/internal/config"
 	"github.com/automation-co/borzoi/internal/utils"
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
+	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
 )
 
 // =============================================================================
@@ -47,13 +50,34 @@ func Clone(username string, accessToken string) {
 			if err != nil {
 
 				if err.Error() == "authentication required" {
-					_, err := git.PlainClone(path, false, &git.CloneOptions{
-						URL: repoUrl,
-						Auth: &http.BasicAuth{
+					// Check if repo is ssh or http
+					isHttpUrl := strings.HasPrefix(repoUrl, "http")
+
+					var auth transport.AuthMethod
+					if isHttpUrl {
+						auth = &http.BasicAuth{
 							Username: username,
 							Password: accessToken, // personal access token
 							// needs to be created using github api
-						},
+						}
+
+					} else {
+
+						// TODO: make public keys work
+
+						publicKeys, err := ssh.NewPublicKeysFromFile("git", "privateKeyFile", "password")
+						if err != nil {
+							fmt.Printf("generate publickeys failed: %s\n", err.Error())
+							return
+						}
+
+						auth = publicKeys
+
+					}
+
+					_, err := git.PlainClone(path, false, &git.CloneOptions{
+						URL:               repoUrl,
+						Auth:              auth,
 						RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 					})
 					if err != nil {
@@ -70,6 +94,7 @@ func Clone(username string, accessToken string) {
 				}
 			}
 			wg.Done()
+
 		}(url, path)
 
 	}
